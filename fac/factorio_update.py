@@ -1,6 +1,11 @@
 import os
 import shutil
-import urllib3
+import sys
+import requests
+
+url_stable = "https://factorio.com/get-download/stable/headless/linux64" # url to download latst-stable for future implementation
+filename_tar = "linux64.tar"
+
 
 def copyDirTree(root_src_dir,root_dst_dir):
     for src_dir, dirs, files in os.walk(root_src_dir):
@@ -26,8 +31,24 @@ def remove(path):
     else:
         print(".")
 
+def download(url, filename):
+    with open(filename, 'wb') as f:
+        response = requests.get(url, stream=True)
+        total = response.headers.get('content-length')
 
-url_stable = "https://factorio.com/get-download/stable/headless/linux64" # url to download latst-stable for future implementation
+        if total is None:
+            f.write(response.content)
+        else:
+            downloaded = 0
+            total = int(total)
+            for data in response.iter_content(chunk_size=max(int(total/1000), 1024*1024)):
+                downloaded += len(data)
+                f.write(data)
+                done = int(50*downloaded/total)
+                sys.stdout.write('\r[{}{}]'.format('█' * done, '.' * (50-done)))
+                sys.stdout.flush()
+    sys.stdout.write('\n')
+
 factorio_path = input('Specify Factorio path ex. \n "/home/user/factorio/" --> ')  # get factorio path
 try:
     os.chdir(factorio_path)
@@ -42,35 +63,24 @@ print("Factorio version : " + factorio_version)
 print("Temp folder : " + path_file)
 
 url_latestexperimental = "https://factorio.com/get-download/" + factorio_version + "/headless/linux64"
-http = urllib3.PoolManager()
-resp = http.request('GET', url_latestexperimental, preload_content=False)
-print("Download in progress...")
-with open(factorio_path + "/linux64", 'wb') as out:
-    while True:
-        print(". .")
-        data = resp.read(2048)
-        if not data:
-            break
-        out.write(data)
-resp.release_conn()
+download(url_latestexperimental,filename_tar)
 
 try:
     remove(path_file + "/")
     os.mkdir(path_file)
-    shutil.unpack_archive(factorio_path + "linux64", path_file, "tar")
+    shutil.unpack_archive(factorio_path + filename_tar, path_file, "tar")
 except OSError:
-    print("Temp directory created... FAILED %s failed" % path_file)
+    print("Temp directory created... FAILED (%s) failed" % path_file)
 else:
-    print("Temp directory created... OK %s " % path_file)
+    print("Temp directory created... OK (%s) " % path_file)
 try:
     dest = copyDirTree(path_file+"/factorio/", factorio_path)
 except OSError as e:
-    print("Destination path:", dest)
-
+    print("Destination path:")
 try:
     remove(path_file+"/")
-    remove(factorio_path + "/linux64")
-    print("Temp files/directory deleted... OK")
+    remove(factorio_path + "/" + filename_tar)
+    print('Copying new files... OK \nTemp files/directory deleted... OK')
+    print("UPDATE COMPLETED.")
 except:
     print("Temp files/directory deleted... ERROR")
-    print("UPDATE COMPLETED.")
