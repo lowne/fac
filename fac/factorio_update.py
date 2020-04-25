@@ -3,10 +3,33 @@ import shutil
 import sys
 import requests
 
-url_stable = "https://factorio.com/get-download/stable/headless/linux64" # url to download latst-stable for future implementation
 filename_tar = "linux64.tar"
 
+"""url return based on user_input """
+##TODO: proper input filter expression
+def version(input_user):
+    url_stable = "https://factorio.com/get-download/stable/headless/linux64"
+    url_experimental ="https://factorio.com/get-download/latest/headless/linux64 "
+    if input_user.upper() == "S" or len(input_user) == 0:
+        url = url_stable
+        factorio_version = "stable"
+        print("Latest stable version selected")
+        return (factorio_version, url)
+    elif input_user.upper() == "E":
+        url = url_experimental
+        factorio_version = "experimental"
+        print("Latest exerimental version selected")
+        return(factorio_version, url)
+    elif len(input_user) != 0 and (input_user.upper() != "S" or input_user.upper() != "E"):
+        factorio_version = input_user.lower()
+        url = "https://factorio.com/get-download/" + factorio_version + "/headless/linux64"
+        print( factorio_version + " version selected")
+        return(factorio_version, url)
+    else:
+        print("At least one option must be selected. Terminating execution ")
+        quit()
 
+"""copying file function"""
 def copyDirTree(root_src_dir,root_dst_dir):
     for src_dir, dirs, files in os.walk(root_src_dir):
         dst_dir = src_dir.replace(root_src_dir, root_dst_dir, 1)
@@ -23,6 +46,7 @@ def copyDirTree(root_src_dir,root_dst_dir):
                     os.remove(dst_file)
             shutil.copy(src_file, dst_dir)
 
+""" remove file and directory function  """
 def remove(path):
     if os.path.isfile(path) or os.path.islink(path):
         os.remove(path)  # remove the file
@@ -31,6 +55,8 @@ def remove(path):
     else:
         print(".")
 
+""" download function with bar indication """
+#FIXME: no detection of connection errors or bad url specified
 def download(url, filename):
     with open(filename, 'wb') as f:
         response = requests.get(url, stream=True)
@@ -49,28 +75,31 @@ def download(url, filename):
                 sys.stdout.flush()
     sys.stdout.write('\n')
 
-factorio_path = input('Specify Factorio path ex. \n "/home/user/factorio/" --> ')  # get factorio path
+
+
+factorio_path = input('Specify Factorio path ex. \n [/home/user/factorio/] --> ')  # get factorio path
 try:
     os.chdir(factorio_path)
 except Exception as e:
-    print("Path not found: " + factorio_path)
+    print("Path not found: (" + factorio_path+")")
     print(e)
-factorio_version = input('Factorio version \n ex. "0.18.xx" --> ')  # get factorio version
-path_file = factorio_path+factorio_version
+    quit()
 
-print("Factorio path : " + factorio_path)
-print("Factorio version : " + factorio_version)
-print("Temp folder : " + path_file)
+version_url = version(input('Factorio version, type S for latest_stable, '
+                            'E for latest_experimental or digit a specific version,'
+                            ' otherwise stable will be installed. \n ex. [S/E/0.18.xx] --> '))  # get factorio version
 
-url_latestexperimental = "https://factorio.com/get-download/" + factorio_version + "/headless/linux64"
-download(url_latestexperimental,filename_tar)
 
+""" download """
+download(version_url[1],filename_tar)
+path_file = factorio_path+version_url[0]
 try:
     remove(path_file + "/")
     os.mkdir(path_file)
     shutil.unpack_archive(factorio_path + filename_tar, path_file, "tar")
 except OSError:
     print("Temp directory created... FAILED (%s) failed" % path_file)
+    quit()
 else:
     print("Temp directory created... OK (%s) " % path_file)
 try:
@@ -84,3 +113,5 @@ try:
     print("UPDATE COMPLETED.")
 except:
     print("Temp files/directory deleted... ERROR")
+
+exit()
