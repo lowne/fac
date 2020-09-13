@@ -28,6 +28,10 @@ FACTORIO_SEARCH_PATHS = [
         user_data_dir('Steam', appauthor=False),
         os.path.join('steamapps', 'common', 'Factorio'),
     ),
+    os.path.join(
+        user_data_dir('Steam', appauthor=False),
+        os.path.join('steamapps', 'common', 'Factorio', 'factorio.app', 'Contents'),
+    ),
 ]
 
 if sys.platform.startswith('win32'):
