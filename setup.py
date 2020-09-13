@@ -11,10 +11,10 @@ setup(
     description="Command-line mod manager for Factorio (install, update...).",
     long_description=long_description,
 
-    url='https://github.com/mickael9/fac',
+    url='https://github.com/sparr/fac',
 
-    author="Mickaël Thomas",
-    author_email='mickael9@gmail.com',
+    author="Clarence \"Sparr\" Risher",
+    author_email='sparr0@gmail.com',
 
     license='MIT',
 
