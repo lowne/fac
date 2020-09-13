@@ -70,7 +70,8 @@ class ListCommand(Command):
                 tags.append('unpacked')
             if mod.held:
                 tags.append('held')
-            if mod.game_version != self.config.game_version_major:
+            if (mod.game_version != self.config.game_version_major) and \
+            (mod.game_version != '0.18' or self.config.game_version_major != '1.0'):
                 tags.append('incompatible')
 
             if any(tag in tags for l in args.exclude for tag in l) or \
