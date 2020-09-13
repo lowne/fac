@@ -12,6 +12,16 @@ class ShowCommand(Command):
 
         Arg('-F', '--format',
             help="show mods using the specified format string."),
+
+        Arg('-S', '--sync', help="Force database sync",
+            action='store_true',
+            default=None,
+            dest='sync'),
+
+        Arg('--no-sync', help="Don't sync database even if it's out of date",
+            action='store_false',
+            default=None,
+            dest='sync'),
     ]
 
     epilog = """
@@ -39,6 +49,12 @@ class ShowCommand(Command):
     """
 
     def run(self, args):
+
+        if args.sync is None:
+            self.db.maybe_update()
+        elif args.sync:
+            self.db.update()
+
         first = True
         for mod in args.mods:
             if first:
