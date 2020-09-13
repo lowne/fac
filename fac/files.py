@@ -1,6 +1,7 @@
 import os
 import sys
 import json
+import os.path
 
 from configparser import ConfigParser
 
@@ -13,9 +14,12 @@ __all__ = ['Config', 'JSONFile']
 FACTORIO_SEARCH_PATHS = [
     '.',
     os.path.join('.', 'factorio'),
+    os.path.join('.', 'Factorio'),
     '..',
     os.path.join('..', 'factorio'),
+    os.path.join('..', 'Factorio'),
     user_data_dir('factorio', appauthor=False),
+    user_data_dir('Factorio', appauthor=False),
     os.path.join(
         user_data_dir('Steam', appauthor=False),
         os.path.join('SteamApps', 'common', 'Factorio'),
@@ -34,13 +38,26 @@ if sys.platform.startswith('win32'):
 elif sys.platform.startswith('linux'):
     FACTORIO_SEARCH_PATHS += [
         '~/factorio',
+        '~/Factorio',
         '~/.factorio',
         '/usr/share/factorio/',
     ]
 else:
     FACTORIO_SEARCH_PATHS += [
         '~/factorio',
+        '~/Factorio',
+        '~/.factorio',
         '/Applications/factorio.app/Contents',
+        os.path.join(
+            user_data_dir('Steam', appauthor=False),
+            os.path.join('SteamApps', 'common', 'Factorio',
+                         'factorio.app', 'Contents'),
+        ),
+        os.path.join(
+            user_data_dir('Steam', appauthor=False),
+            os.path.join('steamapps', 'common', 'Factorio',
+                         'factorio.app', 'Contents'),
+        ),
     ]
 
 
@@ -52,6 +69,9 @@ class Config(ConfigParser):
     [paths]
     data-path =
     write-path =
+
+    [db]
+    update_period = 600
     '''
 
     def __init__(self, config_file=None):
@@ -114,9 +134,9 @@ class Config(ConfigParser):
             return path
         elif path:
             raise Exception(
-                'The supplied data path (%s) does not seem to be correct.\n'
-                'Please check the data-path variable in %s and make sure it '
-                'points to a data directory containing a base/info.json file.'
+                "The supplied data path (%s) does not seem to be correct.\n"
+                "Please check the data-path variable in %s and make sure it "
+                "points to a data directory containing a base/info.json file."
                 % (path, self.config_file)
             )
         else:
@@ -130,8 +150,8 @@ class Config(ConfigParser):
                     return path
 
         raise Exception(
-            'Can not find the factorio data path.\n'
-            'Please set the data-path variable in %s' % (
+            "Can not find the factorio data path.\n"
+            "Please set the data-path variable in %s" % (
                 self.config_file
             )
         )
@@ -144,8 +164,8 @@ class Config(ConfigParser):
             return path
         elif path:
             raise Exception(
-                'The supplied write path (%s) does not seem to be correct.\n'
-                'Please check the write-path variable in %s and make sure it '
+                "The supplied write path (%s) does not seem to be correct.\n"
+                "Please check the write-path variable in %s and make sure it "
                 "points to a directory containing writeable 'config' and "
                 "'mods' subdirectories." % (
                     path,
@@ -160,8 +180,8 @@ class Config(ConfigParser):
                     return path
 
         raise Exception(
-            'Can not find a valid factorio write path.\n'
-            'Please set one using the write-path variable in %s' % (
+            "Can not find a valid factorio write path.\n"
+            "Please set one using the write-path variable in %s" % (
                 self.config_file
             )
         )
@@ -230,3 +250,13 @@ class JSONFile(JSONDict):
     def save(self):
         with open(self.file, 'w', encoding='utf-8') as f:
             json.dump(self.data, f, indent=4)
+
+    @property
+    def mtime(self):
+        try:
+            return os.path.getmtime(self.file)
+        except IOError:
+            return 0
+
+    def utime(self, *args, **kwargs):
+        os.utime(self.file, *args, **kwargs)

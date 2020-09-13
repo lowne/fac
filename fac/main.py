@@ -2,6 +2,7 @@ import argparse
 import logging
 
 from fac.api import API
+from fac.db import DB
 from fac.files import Config
 from fac.mods import ModManager
 
@@ -13,30 +14,30 @@ log = logging.getLogger(__name__)
 
 def main():
     common_parser = argparse.ArgumentParser(add_help=False)
-    common_group = common_parser.add_argument_group('general options')
+    common_group = common_parser.add_argument_group("general options")
 
     common_group.add_argument(
         '-g', '--game-version',
-        help='force a specific game version'
+        help="force a specific game version"
     )
 
     common_group.add_argument(
         '-m', '--mods-directory',
-        help='use the specified mods directory'
+        help="use the specified mods directory"
     )
 
     common_group.add_argument(
         '-i', '--ignore-game-ver', action='store_true',
-        help='ignore game version when selecting packages'
+        help="ignore game version when selecting packages"
     )
 
     common_group.add_argument(
         '-v', '--verbose', action='store_true',
-        help='show more detailled output'
+        help="show more detailled output"
     )
     common_group.add_argument(
         '-h', '--help', action='help',
-        help='show this help message and exit'
+        help="show this help message and exit"
     )
 
     command_parser = argparse.ArgumentParser(add_help=False)
@@ -46,16 +47,17 @@ def main():
 
     api = API()
     config = Config()
-    manager = ModManager(api=api, config=config)
+    db = DB(config, api)
+    manager = ModManager(api=api, config=config, db=db)
 
     for command_class in CommandRegistry.commands:
-        command = command_class(api, config, manager)
+        command = command_class(manager)
         command.create_parser(command_subparsers, [common_parser])
 
     root_parser = argparse.ArgumentParser(
-        description='Mod manager for Factorio',
+        description="Mod manager for Factorio",
         add_help=False,
-        usage='%(prog)s COMMAND [options...]',
+        usage="%(prog)s COMMAND [options...]",
         parents=[command_parser, common_parser]
     )
 
@@ -75,11 +77,11 @@ def main():
 
     manager.load()
 
-    log.debug('fac version: %s' % fac.__version__)
-    log.debug('Factorio write path: %s', config.factorio_write_path)
-    log.debug('Factorio game path: %s', config.factorio_data_path)
-    log.debug('Mods directory: %s', config.mods_directory)
-    log.debug('Factorio version: %s', config.game_version)
+    log.debug("fac version: %s" % fac.__version__)
+    log.debug("Factorio write path: %s", config.factorio_write_path)
+    log.debug("Factorio game path: %s", config.factorio_data_path)
+    log.debug("Mods directory: %s", config.mods_directory)
+    log.debug("Factorio version: %s", config.game_version)
 
     if args.command:
         try:
@@ -88,6 +90,7 @@ def main():
             pass
     else:
         root_parser.print_help()
+
 
 if __name__ == '__main__':
     main()

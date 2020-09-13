@@ -9,8 +9,10 @@ from pathlib import Path
 from glob import glob
 
 from fac.files import JSONFile
-from fac.utils import JSONDict, Version, parse_game_version
-from fac.api import AuthError, OwnershipError, ModNotFoundError
+from fac.utils import (JSONDict, ProgressWidget,
+                       Version, parse_game_version, match_game_version)
+
+from fac.errors import ModNotFoundError, AuthError, OwnershipError
 
 
 class Mod:
@@ -63,7 +65,7 @@ class Mod:
                 mod = cls(manager, path)
 
             except Exception as ex:
-                print('Warning: invalid mod %s: %s' % (path, ex))
+                print("Warning: invalid mod %s: %s" % (path, ex))
                 continue
 
             if not fnmatchcase(mod.name, name):
@@ -100,7 +102,7 @@ class ZippedMod(Mod):
         self._read_info()
 
     def remove(self):
-        print('Removing file: %s' % self.location)
+        print("Removing file: %s" % self.location)
         os.remove(self.location)
 
     def _read_info(self):
@@ -109,7 +111,7 @@ class ZippedMod(Mod):
             self.toplevel = first_entry.split('/')[0]
 
             if not self.toplevel:
-                raise Exception('Could not find a top-level directory')
+                raise Exception("Could not find a top-level directory")
 
             info = json.loads(
                 f.read(
@@ -132,7 +134,7 @@ class ZippedMod(Mod):
         if os.path.isdir(unpacked_location) and not replace:
             return UnpackedMod(self.manager, unpacked_location)
 
-        print('Unpacking: %s' % self.location)
+        print("Unpacking: %s" % self.location)
 
         with ZipFile(self.location) as f:
             if replace and os.path.isdir(unpacked_location):
@@ -152,7 +154,7 @@ class ZippedMod(Mod):
                     dest = os.path.join(unpacked_location, dest)
                     self._extract_member(f, arcname, dest)
                 unpacked_mod = UnpackedMod(self.manager, unpacked_location)
-            except:
+            except Exception:
                 shutil.rmtree(unpacked_location)
                 raise
 
@@ -190,12 +192,12 @@ class ZippedMod(Mod):
             return
 
         with zipfile.open(arcname) as source, \
-                open(dest, "wb") as target:
+                open(dest, 'wb') as target:
             shutil.copyfileobj(source, target)
 
     @classmethod
     def find(cls, *args, **kwargs):
-        return cls._find("*.zip", *args, **kwargs)
+        return cls._find('*.zip', *args, **kwargs)
 
 
 class UnpackedMod(Mod):
@@ -217,7 +219,7 @@ class UnpackedMod(Mod):
         self._read_info()
 
     def remove(self):
-        print('Removing directory: %s' % self.location)
+        print("Removing directory: %s" % self.location)
         shutil.rmtree(self.location)
 
     def _read_info(self):
@@ -236,9 +238,9 @@ class UnpackedMod(Mod):
         if not replace and os.path.exists(packed_location):
             return ZippedMod(self.manager, packed_location)
 
-        print('Packing: %s' % self.location)
+        print("Packing: %s" % self.location)
 
-        with ZipFile(packed_location, "w") as f:
+        with ZipFile(packed_location, 'w') as f:
             try:
                 for root, dirs, files in os.walk(self.location):
                     zip_root = Path(root).relative_to(
@@ -251,7 +253,7 @@ class UnpackedMod(Mod):
                         )
                 f.close()
                 packed_mod = ZippedMod(self.manager, packed_location)
-            except:
+            except Exception:
                 f.close()
                 os.remove(packed_location)
                 raise
@@ -267,11 +269,12 @@ class UnpackedMod(Mod):
 
 
 class ModManager:
-    'Provides access to the factorio mods directory'
+    """Provides access to the factorio mods directory"""
 
-    def __init__(self, config, api):
+    def __init__(self, config, api, db):
         self.api = api
         self.config = config
+        self.db = db
         self.mods_json = None
 
     def load(self):
@@ -304,63 +307,62 @@ class ModManager:
             mods.extend(mod_type.find(self, name, version))
         return mods
 
-    def resolve_mod_name(self, name, remote=False):
-        if '*' in name:
+    def resolve_mod_name(self, name, remote=False, patterns=True):
+        if patterns and '*' in name:
             # Keep patterns unmodified
             return name
 
-        # Find an exact local match
-        local_mods = self.find_mods()
-
-        for mod in local_mods:
-            if mod.name == name:
-                return name
+        # Find an exact match
+        mod_names = set(mod.name for mod in self.find_mods())
 
         if remote:
-            # Find an exact remote match
-            try:
-                mod = self.api.get_mod(name)
-                return mod.name
-            except ModNotFoundError:
-                pass
+            mod_names |= set(self.db.mods)
 
-        # Find a local match (case-insensitive)
-        for mod in local_mods:
-            if mod.name.lower() == name.lower():
-                return mod.name
+        if name in mod_names:
+            return name
 
-        # Find a local partial match (case-insensitive)
-        partial_matches = [mod for mod in local_mods
-                           if name.lower() in mod.name.lower()]
+        # Find a case-insensitive match
+        for mod_name in mod_names:
+            if mod_name.lower() == name.lower():
+                return mod_name
+
+        # Find a unique partial match (case-insensitive)
+        partial_matches = [mod_name
+                           for mod_name in mod_names
+                           if name.lower() in mod_name.lower()]
+
         if len(partial_matches) == 1:
-            return partial_matches[0].name
+            return partial_matches[0]
 
         if remote:
             # Find a remote match (case-insensitive)
-            remote_mods = list(self.api.search(name, page_size=5, limit=5))
-            for mod in remote_mods:
-                if mod.name.lower() == name.lower():
-                    return mod.name
+            remote_mods = list(self.db.search(name, limit=5))
 
             # If there was only one result, we can assume it's the one
             if len(remote_mods) == 1:
                 return remote_mods[0].name
+            elif len(remote_mods) > 1:
+                print("'%s' not found, try one of the following:" % name)
+                for match in remote_mods:
+                    print(" - " + match.name)
+                print()
+
+        raise ModNotFoundError(name)
 
         # If nothing was found, return original mod name and let things fail
         return name
 
     def resolve_remote_requirement(self, req, ignore_game_ver=False):
         spec = req.specifier
-        game_ver = self.config.game_version_major
+        game_ver = None if ignore_game_ver else self.config.game_version_major
 
-        mod = self.api.get_mod(req.name)
+        releases = self.get_releases(req.name, game_ver)
 
-        res = [release for release in mod.releases
-               if release.version in spec and
-               (ignore_game_ver or
-                parse_game_version(release) == game_ver)]
-        res.sort(key=lambda r: Version(r.version), reverse=True)
-        return res
+        yield from (
+            release
+            for release in releases
+            if release.version in spec
+        )
 
     def resolve_local_requirement(self, req, ignore_game_ver=False):
         spec = req.specifier
@@ -371,6 +373,25 @@ class ModManager:
                (ignore_game_ver or mod.game_version == game_ver)]
         res.sort(key=lambda m: m.version, reverse=True)
         return res
+
+    def get_releases(self, mod_name, game_version):
+        try:
+            mod = getattr(self.db.mods, mod_name)
+        except AttributeError:
+            raise ModNotFoundError(mod_name)
+
+        if match_game_version(mod.latest_release, game_version):
+            latest = mod.latest_release
+            yield latest
+
+        mod = self.api.get_mod(mod_name)
+        res = [release
+               for release in mod.releases
+               if match_game_version(release, game_version)
+               and release.version != latest.version]
+
+        res.sort(key=lambda r: Version(r.version), reverse=True)
+        yield from res
 
     def is_mod_enabled(self, name):
         mod = self.get_mod_json(name)
@@ -390,7 +411,8 @@ class ModManager:
 
         if enabled != self.is_mod_enabled(name):
             if self.config.game_version < Version('0.15'):
-                # Factorio < 0.15 uses "true"/"false" strings instead of booleans
+                # Factorio < 0.15 uses "true"/"false" strings
+                # instead of booleans
                 mod.enabled = 'true' if enabled else 'false'
             else:
                 mod.enabled = enabled
@@ -422,18 +444,18 @@ class ModManager:
         token = player_data.get('service-token')
 
         if reset or not (username and token):
-            print('You need a Factorio account to download mods.')
-            print('Please provide your username and password to authenticate '
-                  'yourself.')
-            print('Your username and token (NOT your password) will be stored '
-                  'so that you only have to enter it once')
-            print('This uses the exact same method used by Factorio itself')
+            print("You need a Factorio account to download mods.")
+            print("Please provide your username and password to authenticate "
+                  "yourself.")
+            print("Your username and token (NOT your password) will be stored "
+                  "so that you only have to enter it once")
+            print("This uses the exact same method used by Factorio itself")
             print()
             while True:
                 if username:
-                    print('Username [%s]:' % username, end=' ', flush=True)
+                    print("Username [%s]:" % username, end=" ", flush=True)
                 else:
-                    print('Username:', end=' ', flush=True)
+                    print("Username:", end=" ", flush=True)
 
                 input_username = sys.stdin.readline().strip()
 
@@ -442,7 +464,7 @@ class ModManager:
                 elif not username:
                     continue
 
-                password = getpass.getpass('Password (not shown):')
+                password = getpass.getpass("Password (not shown):")
                 if not password:
                     continue
 
@@ -455,11 +477,11 @@ class ModManager:
                     print("Please buy the game or link your Steam account if "
                           "you have bought the game from Steam.")
                 except AuthError as ex:
-                    print('Authentication error: %s.' % ex)
+                    print("Authentication error: %s." % ex)
                 except Exception as ex:
-                    print('Error: %s.' % ex)
+                    print("Error: %s." % ex)
                 else:
-                    print('Logged in successfully.')
+                    print("Logged in successfully.")
                     break
                 print()
             player_data['service-token'] = token
@@ -506,29 +528,33 @@ class ModManager:
     def download_mod(self, release, file_path):
         player_data = self.require_login()
         url = urljoin(self.api.base_url, release.download_url)
+        basename = release.file_name
 
-        while True:
-            print('Downloading: %s...' % url)
+        with ProgressWidget("Downloading: %s..." % basename) as progress:
+            while True:
+                req = self.api.get(
+                    url,
+                    params={
+                        'username': player_data['service-username'],
+                        'token': player_data['service-token']
+                    },
+                    stream=True,
+                )
 
-            req = self.api.get(
-                url,
-                params={
-                    'username': player_data['service-username'],
-                    'token': player_data['service-token']
-                }
-            )
+                if req.status_code == 403:
+                    progress.error()
+                    print("Authentication error when downloading mod. "
+                          "Please login again.")
+                    player_data = self.require_login(reset=True)
+                    continue
+                break
 
-            if req.status_code == 403:
-                print('Authentication error when downloading mod. '
-                      'Please login again.')
-                player_data = self.require_login(reset=True)
-                continue
-            break
+            req.raise_for_status()
+            length = int(req.headers['content-length'])
 
-        req.raise_for_status()
-        data = req.content
-
-        with open(file_path, 'wb') as f:
-            f.write(data)
+            with open(file_path, 'wb') as f:
+                for chunk in req.iter_content(chunk_size=1024):
+                    f.write(chunk)
+                    progress(f.tell(), length)
 
         return ZippedMod(self, file_path)
