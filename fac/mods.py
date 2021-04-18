@@ -411,12 +411,7 @@ class ModManager:
             mod = self.get_mod_json(name)
 
         if enabled != self.is_mod_enabled(name):
-            if self.config.game_version < Version('0.15'):
-                # Factorio < 0.15 uses "true"/"false" strings
-                # instead of booleans
-                mod.enabled = 'true' if enabled else 'false'
-            else:
-                mod.enabled = enabled
+            mod.enabled = enabled
             self.mods_json.save()
             return True
         else:
